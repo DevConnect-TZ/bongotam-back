@@ -43,7 +43,7 @@ class AuthSessionController extends Controller
 
         if (! $user->exists) {
             $user->fill([
-                'name' => $identity['name'] ?: Str::before($email, '@'),
+                'name' => filled($identity['name'] ?? null) ? $identity['name'] : Str::before($email, '@'),
                 'password' => Str::random(48),
                 'role' => 'user',
                 'status' => 'active',

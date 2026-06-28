@@ -91,7 +91,11 @@ class PaymentController extends Controller
             'currency' => strtoupper($validated['currency']),
         ]);
 
-        if (($providerResponse['status'] ?? 'error') !== 'success' || ! filled(data_get($providerResponse, 'data.order_id'))) {
+        $orderId = data_get($providerResponse, 'data.order_id')
+            ?? $providerResponse['order_id']
+            ?? null;
+
+        if (($providerResponse['status'] ?? 'error') !== 'success' || ! filled($orderId)) {
             return response()->json([
                 'status' => 'error',
                 'message' => $providerResponse['message'] ?? 'Unable to create payment order.',
@@ -99,11 +103,16 @@ class PaymentController extends Controller
             ], (int) ($providerResponse['http_status'] ?? 502));
         }
 
-        $providerData = $providerResponse['data'];
-        $paymentStatus = strtoupper((string) ($providerData['payment_status'] ?? $providerData['status'] ?? 'PENDING'));
+        // SonicPesa returns fields at the top level; Mobilipa nests them under 'data'.
+        $providerData = is_array($providerResponse['data'] ?? null)
+            ? $providerResponse['data']
+            : $providerResponse;
+
+        $rawPaymentStatus = strtoupper((string) ($providerData['payment_status'] ?? $providerData['status'] ?? 'PENDING'));
+        $paymentStatus = $this->mapTransactionStatus($rawPaymentStatus);
 
         $transaction = Transaction::updateOrCreate(
-            ['transaction_id' => $providerData['order_id']],
+            ['transaction_id' => $orderId],
             [
                 'user_id' => (string) $user->id,
                 'user_email' => $user->email,
@@ -113,7 +122,7 @@ class PaymentController extends Controller
                 'zone' => $zone,
                 'item_id' => $validated['item_id'] ?? null,
                 'item_title' => $validated['item_title'] ?? null,
-                'status' => $this->mapTransactionStatus($paymentStatus),
+                'status' => $paymentStatus,
                 'provider' => $providerName,
                 'payment_status' => $paymentStatus,
                 'reference' => $providerData['reference'] ?? null,
@@ -259,10 +268,11 @@ class PaymentController extends Controller
             ], 404);
         }
 
-        $paymentStatus = strtoupper((string) $payload['status']);
+        $rawPaymentStatus = strtoupper((string) $payload['status']);
+        $mappedStatus = $this->mapTransactionStatus($rawPaymentStatus, $payload['event']);
         $transaction->fill([
-            'status' => $this->mapTransactionStatus($paymentStatus, $payload['event']),
-            'payment_status' => $paymentStatus,
+            'status' => $mappedStatus,
+            'payment_status' => $mappedStatus,
             'reference' => $payload['reference'] ?? $transaction->reference,
             'provider_transaction_id' => $payload['transid'] ?? $transaction->provider_transaction_id,
             'channel' => $payload['channel'] ?? $transaction->channel,
@@ -304,37 +314,44 @@ class PaymentController extends Controller
             $providerTransaction = [];
         }
 
+        // SonicPesa returns payment_status/amount/phone at the top level,
+        // while Mobilipa nests them under 'data' or 'transaction'.
+        // Check nested paths first, then fall back to top-level fields.
         $paymentStatus = $providerData['payment_status']
             ?? $providerData['status']
             ?? $providerTransaction['payment_status']
             ?? $providerTransaction['status']
+            ?? $providerResponse['payment_status']
             ?? null;
 
         if (! filled($paymentStatus)) {
             return;
         }
 
-        $paymentStatus = strtoupper((string) $paymentStatus);
+        $rawPaymentStatus = strtoupper((string) $paymentStatus);
+        $mappedStatus = $this->mapTransactionStatus($rawPaymentStatus);
 
         $transaction->fill([
-            'status' => $this->mapTransactionStatus($paymentStatus),
-            'payment_status' => $paymentStatus,
-            'reference' => $providerData['reference'] ?? $transaction->reference,
+            'status' => $mappedStatus,
+            'payment_status' => $mappedStatus,
+            'reference' => $providerData['reference'] ?? $providerResponse['reference'] ?? $transaction->reference,
             'buyer_name' => $providerTransaction['buyer_name'] ?? $transaction->buyer_name,
-            'buyer_phone' => $providerData['phone'] ?? $transaction->buyer_phone,
-            'provider_transaction_id' => $providerData['transid'] ?? $transaction->provider_transaction_id,
-            'channel' => $providerData['channel'] ?? $transaction->channel,
-            'msisdn' => $providerData['msisdn'] ?? $providerData['phone'] ?? $transaction->msisdn,
+            'buyer_phone' => $providerData['phone'] ?? $providerResponse['phone'] ?? $transaction->buyer_phone,
+            'provider_transaction_id' => $providerData['transid'] ?? $providerResponse['transid'] ?? $transaction->provider_transaction_id,
+            'channel' => $providerData['channel'] ?? $providerResponse['channel'] ?? $transaction->channel,
+            'msisdn' => $providerData['msisdn'] ?? $providerData['phone'] ?? $providerResponse['msisdn'] ?? $providerResponse['phone'] ?? $transaction->msisdn,
             'provider_event' => 'order_status.polled',
             'provider_payload' => $providerResponse,
         ]);
 
-        if (isset($providerData['amount'])) {
-            $transaction->amount = (int) $providerData['amount'];
+        $amount = $providerData['amount'] ?? $providerResponse['amount'] ?? null;
+        if (isset($amount)) {
+            $transaction->amount = (int) $amount;
         }
 
-        if (isset($providerData['currency'])) {
-            $transaction->currency = strtoupper((string) $providerData['currency']);
+        $currency = $providerData['currency'] ?? $providerResponse['currency'] ?? null;
+        if (isset($currency)) {
+            $transaction->currency = strtoupper((string) $currency);
         }
 
         $transaction->save();
@@ -351,7 +368,7 @@ class PaymentController extends Controller
             'reference' => $transaction->reference,
             'amount' => $transaction->amount,
             'currency' => $transaction->currency,
-            'payment_status' => $transaction->payment_status ?? strtoupper((string) $transaction->status),
+            'payment_status' => $transaction->status,
             'status' => $transaction->status,
             'creation_date' => optional($transaction->created_at)->format('Y-m-d H:i:s'),
             'transid' => $transaction->provider_transaction_id,

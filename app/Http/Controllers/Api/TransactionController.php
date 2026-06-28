@@ -82,7 +82,7 @@ class TransactionController extends Controller
             'item_id' => $transaction->item_id,
             'item_title' => $transaction->item_title,
             'status' => $transaction->status,
-            'payment_status' => $transaction->payment_status ?? strtoupper((string) $transaction->status),
+            'payment_status' => $transaction->status,
             'provider' => $transaction->provider,
             'reference' => $transaction->reference,
             'transid' => $transaction->provider_transaction_id,

@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Http;
 
 class FirebaseIdentityService
 {
-    private const DEFAULT_WEB_API_KEY = 'AIzaSyANb1ccCko2x-7KxUEV2DzuTM09EMBjLyQ';
+    private const DEFAULT_WEB_API_KEY = 'AIzaSyB3L65yGO42EjY_CwuSCUML6iF84l1QDgE';
 
     public function isConfigured(): bool
     {
