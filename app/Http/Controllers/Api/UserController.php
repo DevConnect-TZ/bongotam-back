@@ -11,7 +11,20 @@ class UserController extends Controller
 {
     public function index(): JsonResponse
     {
-        $users = User::all(['id', 'name', 'email', 'role', 'status', 'created_at', 'last_login']);
+        $users = User::all(['id', 'name', 'email', 'role', 'status', 'wakubwa_subscription_expires_at', 'created_at', 'last_login'])
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->role,
+                    'status' => $user->status,
+                    'wakubwa_subscribed' => $user->isWakubwaSubscribed(),
+                    'wakubwa_subscription_expires_at' => optional($user->wakubwa_subscription_expires_at)->toIso8601String(),
+                    'created_at' => optional($user->created_at)->toIso8601String(),
+                    'last_login' => optional($user->last_login)->toIso8601String(),
+                ];
+            });
 
         return response()->json($users);
     }
