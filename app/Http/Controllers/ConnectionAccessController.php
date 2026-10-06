@@ -18,9 +18,13 @@ use Throwable;
 class ConnectionAccessController extends Controller
 {
     private const OTP_SESSION_KEY = 'connection_login_otp';
+
     private const OTP_LIFETIME_MINUTES = 10;
+
     private const OTP_MAX_ATTEMPTS = 5;
+
     private const OTP_SEND_MAX_ATTEMPTS = 5;
+
     private const OTP_SEND_DECAY_SECONDS = 600;
 
     public function login(Request $request): View|RedirectResponse
@@ -94,7 +98,7 @@ class ConnectionAccessController extends Controller
             Mail::raw(
                 "Your Connection analytics login code is {$otp}. It expires in "
                 .self::OTP_LIFETIME_MINUTES
-                ." minutes.",
+                .' minutes.',
                 function ($message) use ($admin): void {
                     $message
                         ->to($admin->email, $admin->name ?: null)
@@ -406,7 +410,7 @@ class ConnectionAccessController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      * @return array<string, mixed>
      */
     private function mailDebugContext(Request $request, array $extra = []): array
