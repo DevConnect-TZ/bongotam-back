@@ -124,7 +124,7 @@ class PaymentController extends Controller
                 'item_title' => $validated['item_title'] ?? null,
                 'status' => $paymentStatus,
                 'provider' => $providerName,
-                'payment_status' => $paymentStatus,
+                'payment_status' => $rawPaymentStatus,
                 'reference' => $providerData['reference'] ?? null,
                 'buyer_name' => $validated['buyer_name'],
                 'buyer_phone' => $normalizedPhone,
@@ -272,7 +272,7 @@ class PaymentController extends Controller
         $mappedStatus = $this->mapTransactionStatus($rawPaymentStatus, $payload['event']);
         $transaction->fill([
             'status' => $mappedStatus,
-            'payment_status' => $mappedStatus,
+            'payment_status' => $rawPaymentStatus,
             'reference' => $payload['reference'] ?? $transaction->reference,
             'provider_transaction_id' => $payload['transid'] ?? $transaction->provider_transaction_id,
             'channel' => $payload['channel'] ?? $transaction->channel,
@@ -298,6 +298,60 @@ class PaymentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Webhook received.',
+        ]);
+    }
+
+    public function mobilipaWebhook(Request $request, MobilipaService $mobilipa): JsonResponse
+    {
+        $payloadRaw = $request->getContent();
+        $signature = $request->header('X-Mobilipa-Signature')
+            ?? $request->header('X-Signature')
+            ?? $request->header('Signature');
+
+        if (! $mobilipa->verifyWebhookSignature($payloadRaw, $signature)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid Mobilipa signature.',
+            ], 401);
+        }
+
+        $payload = json_decode($payloadRaw, true);
+
+        if (! is_array($payload)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid webhook payload.',
+            ], 422);
+        }
+
+        $orderId = data_get($payload, 'data.order_id')
+            ?? data_get($payload, 'order_id')
+            ?? data_get($payload, 'reference');
+
+        if (! filled($orderId)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Order ID is missing in webhook payload.',
+            ], 422);
+        }
+
+        $transaction = Transaction::where('transaction_id', $orderId)
+            ->orWhere('reference', $orderId)
+            ->first();
+
+        if (! $transaction) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Transaction not found.',
+            ], 404);
+        }
+
+        $this->applyOrderStatusResponse($transaction, $payload);
+        $transaction->refresh();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Mobilipa webhook received.',
         ]);
     }
 
@@ -333,13 +387,13 @@ class PaymentController extends Controller
 
         $transaction->fill([
             'status' => $mappedStatus,
-            'payment_status' => $mappedStatus,
+            'payment_status' => $rawPaymentStatus,
             'reference' => $providerData['reference'] ?? $providerResponse['reference'] ?? $transaction->reference,
             'buyer_name' => $providerTransaction['buyer_name'] ?? $transaction->buyer_name,
-            'buyer_phone' => $providerData['phone'] ?? $providerResponse['phone'] ?? $transaction->buyer_phone,
-            'provider_transaction_id' => $providerData['transid'] ?? $providerResponse['transid'] ?? $transaction->provider_transaction_id,
+            'buyer_phone' => $providerData['payer_phone'] ?? $providerData['phone'] ?? $providerResponse['phone'] ?? $transaction->buyer_phone,
+            'provider_transaction_id' => $providerData['transid'] ?? $providerData['selcom_reference'] ?? $providerResponse['selcom_reference'] ?? $providerResponse['transid'] ?? $transaction->provider_transaction_id,
             'channel' => $providerData['channel'] ?? $providerResponse['channel'] ?? $transaction->channel,
-            'msisdn' => $providerData['msisdn'] ?? $providerData['phone'] ?? $providerResponse['msisdn'] ?? $providerResponse['phone'] ?? $transaction->msisdn,
+            'msisdn' => $providerData['msisdn'] ?? $providerData['payer_phone'] ?? $providerData['phone'] ?? $providerResponse['msisdn'] ?? $providerResponse['phone'] ?? $transaction->msisdn,
             'provider_event' => 'order_status.polled',
             'provider_payload' => $providerResponse,
         ]);
@@ -368,7 +422,7 @@ class PaymentController extends Controller
             'reference' => $transaction->reference,
             'amount' => $transaction->amount,
             'currency' => $transaction->currency,
-            'payment_status' => $transaction->status,
+            'payment_status' => $transaction->payment_status ?? $transaction->status,
             'status' => $transaction->status,
             'creation_date' => optional($transaction->created_at)->format('Y-m-d H:i:s'),
             'transid' => $transaction->provider_transaction_id,
