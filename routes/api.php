@@ -28,6 +28,7 @@ Route::get('/videos', [VideoController::class, 'index']);
 Route::get('/videos/{id}', [VideoController::class, 'show']);
 Route::post('/videos/{id}/views', [VideoController::class, 'incrementViews']);
 Route::post('/payments/sonicpesa/webhook', [PaymentController::class, 'webhook']);
+Route::post('/payments/mobilipa/webhook', [PaymentController::class, 'mobilipaWebhook']);
 
 Route::middleware('api.auth')->group(function (): void {
     Route::get('/users/lookup', [UserController::class, 'lookup']);
@@ -35,8 +36,13 @@ Route::middleware('api.auth')->group(function (): void {
 
     Route::get('/transactions', [TransactionController::class, 'index']);
 
+    // Payments (SonicPesa & Mobilipa)
+    Route::post('/payments/order', [PaymentController::class, 'createOrder']);
+    Route::get('/payments/orders/{orderId}', [PaymentController::class, 'status']);
     Route::post('/payments/sonicpesa/order', [PaymentController::class, 'createOrder']);
     Route::get('/payments/sonicpesa/orders/{orderId}', [PaymentController::class, 'status']);
+    Route::post('/payments/mobilipa/order', [PaymentController::class, 'createOrder']);
+    Route::get('/payments/mobilipa/orders/{orderId}', [PaymentController::class, 'status']);
     Route::get('/payments/gateway', [PaymentGatewayController::class, 'show']);
 
     Route::post('/videos/{id}/stream', [VideoController::class, 'stream']);
@@ -69,8 +75,10 @@ Route::middleware(['api.auth', 'api.admin'])->group(function (): void {
     // Transactions
     Route::post('/transactions', [TransactionController::class, 'store']);
 
-    // Subscription price (admin only)
+    // Subscription management (admin only)
     Route::put('/subscription/wakubwa/price', [SubscriptionController::class, 'price']);
+    Route::get('/subscription/wakubwa/subscribers', [SubscriptionController::class, 'subscribers']);
+    Route::post('/users/{id}/grant-subscription', [SubscriptionController::class, 'grantSubscription']);
 
     // Payment gateway switching (admin only)
     Route::put('/payments/gateway', [PaymentGatewayController::class, 'update']);
