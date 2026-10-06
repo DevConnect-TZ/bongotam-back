@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\AuthenticateApiAccessToken;
+use App\Http\Middleware\EnsureApiAdmin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -14,8 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
-            'api.auth' => \App\Http\Middleware\AuthenticateApiAccessToken::class,
-            'api.admin' => \App\Http\Middleware\EnsureApiAdmin::class,
+            'api.auth' => AuthenticateApiAccessToken::class,
+            'api.admin' => EnsureApiAdmin::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [
