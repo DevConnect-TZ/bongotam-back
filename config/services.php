@@ -50,8 +50,9 @@ return [
     ],
 
     'mobilipa' => [
-        'base_url' => env('MOBILIPA_BASE_URL', 'https://api.mobilipa.store'),
+        'base_url' => env('MOBILIPA_BASE_URL', 'https://mobilipa.store/api/v1'),
         'api_key' => env('MOBILIPA_API_KEY'),
+        'api_secret' => env('MOBILIPA_API_SECRET'),
+        'webhook_secret' => env('MOBILIPA_WEBHOOK_SECRET'),
     ],
-
 ];
