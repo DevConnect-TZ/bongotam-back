@@ -26,8 +26,9 @@ class MobilipaPaymentTest extends TestCase
             'services.sonicpesa.base_url' => 'https://api.sonicpesa.com',
             'services.sonicpesa.api_key' => 'test-sp-key',
             'services.sonicpesa.api_secret' => 'test-sp-secret',
-            'services.mobilipa.base_url' => 'https://api.mobilipa.store',
+            'services.mobilipa.base_url' => 'https://mobilipa.store/api/v1',
             'services.mobilipa.api_key' => 'test-mobilipa-key',
+            'services.mobilipa.webhook_secret' => 'test-mobilipa-webhook-secret',
         ]);
 
         $this->withoutMiddleware([
@@ -43,25 +44,18 @@ class MobilipaPaymentTest extends TestCase
         ]);
 
         Http::fake([
-            'https://api.mobilipa.store/*' => Http::response([
-                'status' => 'success',
-                'message' => 'Payment order created successfully! Push USSD sent to your phone.',
-                'data' => [
-                    'order_id' => 'mp_69e9623649553',
-                    'reference' => 'M20515045387',
-                    'amount' => 10000,
-                    'currency' => 'TZS',
-                    'payment_status' => 'PENDING',
-                    'status' => 'PENDING',
-                    'creation_date' => '2026-04-23 03:06:13',
-                    'transid' => null,
-                    'channel' => null,
-                    'msisdn' => '255797455136',
-                ],
+            'https://mobilipa.store/api/v1/request-payment.php*' => Http::response([
+                'success' => true,
+                'order_id' => 'mp_69e9623649553',
+                'reference' => 'M20515045387',
+                'status' => 'PENDING',
+                'resultcode' => '000',
+                'message' => 'USSD push sent to 255797455136. Waiting for customer PIN.',
+                'selcom_reference' => 'S20754484120',
             ], 200),
         ]);
 
-        $response = $this->actingAs($user)->postJson('/api/payments/sonicpesa/order', [
+        $response = $this->actingAs($user)->postJson('/api/payments/mobilipa/order', [
             'user_email' => $user->email,
             'buyer_name' => 'John Doe',
             'buyer_phone' => '0797455136',
@@ -92,7 +86,7 @@ class MobilipaPaymentTest extends TestCase
             ]);
 
         Http::assertSent(function ($request) {
-            return $request->url() === 'https://api.mobilipa.store/v1/payment/create_order'
+            return $request->url() === 'https://mobilipa.store/api/v1/request-payment.php'
                 && $request->hasHeader('X-API-KEY', 'test-mobilipa-key')
                 && $request['buyer_email'] === 'buyer@example.com'
                 && $request['buyer_name'] === 'John Doe'
@@ -138,33 +132,24 @@ class MobilipaPaymentTest extends TestCase
         ]);
 
         Http::fake([
-            'https://api.mobilipa.store/v1/payment/status' => Http::response([
-                'status' => 'success',
-                'message' => 'Order status retrieved successfully',
+            'https://mobilipa.store/api/v1/order-status.php*' => Http::response([
+                'success' => true,
                 'data' => [
                     'order_id' => 'mp_69e96e149c41f',
-                    'payment_status' => 'SUCCESS',
+                    'reference' => '1679319303',
                     'amount' => 200,
                     'currency' => 'TZS',
-                    'phone' => '255797455136',
+                    'status' => 'COMPLETED',
+                    'type' => 'PAYMENT',
+                    'payer_phone' => '255797455136',
+                    'created_at' => '2026-04-23 00:55:52',
                     'transid' => 'DDNIN0NPJQ',
-                    'reference' => '1679319303',
                     'channel' => 'MPESA-TZ',
-                    'msisdn' => '255797455136',
-                    'created_at' => '2026-04-23T00:55:52.000000Z',
-                    'cached' => true,
-                ],
-                'transaction' => [
-                    'order_id' => 'mp_69e96e149c41f',
-                    'status' => 'SUCCESS',
-                    'amount' => '200',
-                    'buyer_email' => 'buyer@example.com',
-                    'buyer_name' => 'John Doe',
                 ],
             ], 200),
         ]);
 
-        $response = $this->actingAs($user)->getJson('/api/payments/sonicpesa/orders/mp_69e96e149c41f');
+        $response = $this->actingAs($user)->getJson('/api/payments/mobilipa/orders/mp_69e96e149c41f');
 
         $response
             ->assertOk()
@@ -172,7 +157,7 @@ class MobilipaPaymentTest extends TestCase
                 'status' => 'success',
                 'data' => [
                     'order_id' => 'mp_69e96e149c41f',
-                    'payment_status' => 'SUCCESS',
+                    'payment_status' => 'COMPLETED',
                     'status' => 'COMPLETED',
                     'reference' => '1679319303',
                     'transid' => 'DDNIN0NPJQ',
@@ -183,7 +168,7 @@ class MobilipaPaymentTest extends TestCase
             ]);
 
         Http::assertSent(function ($request) {
-            return $request->url() === 'https://api.mobilipa.store/v1/payment/status'
+            return str_starts_with($request->url(), 'https://mobilipa.store/api/v1/order-status.php')
                 && $request->hasHeader('X-API-KEY', 'test-mobilipa-key')
                 && $request['order_id'] === 'mp_69e96e149c41f';
         });
@@ -191,7 +176,7 @@ class MobilipaPaymentTest extends TestCase
         $this->assertDatabaseHas('transactions', [
             'transaction_id' => 'mp_69e96e149c41f',
             'status' => 'COMPLETED',
-            'payment_status' => 'SUCCESS',
+            'payment_status' => 'COMPLETED',
             'provider_transaction_id' => 'DDNIN0NPJQ',
             'channel' => 'MPESA-TZ',
             'reference' => '1679319303',
@@ -200,5 +185,70 @@ class MobilipaPaymentTest extends TestCase
         ]);
 
         $this->assertContains('22', $user->fresh()->unlocked_connection_videos ?? []);
+    }
+
+    public function test_mobilipa_webhook_processes_successful_payment(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'webhook@example.com',
+            'unlocked_connection_videos' => [],
+        ]);
+
+        Transaction::create([
+            'user_id' => (string) $user->id,
+            'user_email' => $user->email,
+            'amount' => 5000,
+            'currency' => 'TZS',
+            'type' => 'PURCHASE_CONNECTION',
+            'zone' => 'connection',
+            'item_id' => '99',
+            'item_title' => 'Webhook Video',
+            'transaction_id' => 'mp_webhook_123',
+            'status' => 'PENDING',
+            'provider' => 'mobilipa',
+            'payment_status' => 'PENDING',
+        ]);
+
+        $payload = json_encode([
+            'order_id' => 'mp_webhook_123',
+            'status' => 'SUCCESS',
+            'payment_status' => 'SUCCESS',
+            'reference' => 'REF_WH_999',
+            'transid' => 'TX_MOB_999',
+            'amount' => 5000,
+            'currency' => 'TZS',
+            'channel' => 'AIRTEL-TZ',
+            'msisdn' => '255688123456',
+        ], JSON_THROW_ON_ERROR);
+
+        $signature = hash_hmac('sha256', $payload, 'test-mobilipa-webhook-secret');
+
+        $response = $this->call(
+            'POST',
+            '/api/payments/mobilipa/webhook',
+            [],
+            [],
+            [],
+            [
+                'CONTENT_TYPE' => 'application/json',
+                'HTTP_X_MOBILIPA_SIGNATURE' => $signature,
+            ],
+            $payload
+        );
+
+        $response->assertOk()
+            ->assertJson([
+                'status' => 'success',
+            ]);
+
+        $this->assertDatabaseHas('transactions', [
+            'transaction_id' => 'mp_webhook_123',
+            'status' => 'COMPLETED',
+            'payment_status' => 'SUCCESS',
+            'provider_transaction_id' => 'TX_MOB_999',
+            'channel' => 'AIRTEL-TZ',
+        ]);
+
+        $this->assertContains('99', $user->fresh()->unlocked_connection_videos ?? []);
     }
 }
