@@ -26,7 +26,7 @@ class PaymentGatewaySwitchingTest extends TestCase
             'services.sonicpesa.base_url' => 'https://api.sonicpesa.com',
             'services.sonicpesa.api_key' => 'test-sp-key',
             'services.sonicpesa.api_secret' => 'test-sp-secret',
-            'services.mobilipa.base_url' => 'https://api.mobilipa.store',
+            'services.mobilipa.base_url' => 'https://mobilipa.store/api/v1',
             'services.mobilipa.api_key' => 'test-mobilipa-key',
         ]);
 
@@ -95,18 +95,13 @@ class PaymentGatewaySwitchingTest extends TestCase
         );
 
         Http::fake([
-            'https://api.mobilipa.store/*' => Http::response([
-                'status' => 'success',
+            'https://mobilipa.store/api/v1/request-payment.php*' => Http::response([
+                'success' => true,
+                'order_id' => 'mp_switched',
+                'reference' => 'REF002',
+                'status' => 'PENDING',
+                'resultcode' => '000',
                 'message' => 'ok',
-                'data' => [
-                    'order_id' => 'mp_switched',
-                    'reference' => 'REF002',
-                    'amount' => 5000,
-                    'currency' => 'TZS',
-                    'payment_status' => 'PENDING',
-                    'status' => 'PENDING',
-                    'msisdn' => '255797455136',
-                ],
             ], 200),
         ]);
 
@@ -118,6 +113,6 @@ class PaymentGatewaySwitchingTest extends TestCase
         ]);
 
         $response->assertCreated();
-        Http::assertSent(fn ($request) => $request->url() === 'https://api.mobilipa.store/v1/payment/create_order');
+        Http::assertSent(fn ($request) => $request->url() === 'https://mobilipa.store/api/v1/request-payment.php');
     }
 }
