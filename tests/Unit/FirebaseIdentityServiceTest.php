@@ -25,7 +25,7 @@ class FirebaseIdentityServiceTest extends TestCase
             ], 200),
         ]);
 
-        $service = new FirebaseIdentityService();
+        $service = new FirebaseIdentityService;
         $identity = $service->lookupByIdToken('sample-token');
 
         $this->assertSame('person@example.com', $identity['email'] ?? null);
@@ -33,7 +33,7 @@ class FirebaseIdentityServiceTest extends TestCase
         Http::assertSent(function ($request) {
             return str_contains(
                 $request->url(),
-                'key=AIzaSyANb1ccCko2x-7KxUEV2DzuTM09EMBjLyQ'
+                'key=AIzaSyB3L65yGO42EjY_CwuSCUML6iF84l1QDgE'
             );
         });
     }
