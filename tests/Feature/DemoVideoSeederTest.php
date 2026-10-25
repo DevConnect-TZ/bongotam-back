@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
 use App\Models\Video;
+use App\Services\ApiSessionService;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Tests\TestCase;
 
 class DemoVideoSeederTest extends TestCase
@@ -14,6 +17,10 @@ class DemoVideoSeederTest extends TestCase
     public function test_demo_videos_are_listed_in_both_zones_without_exposing_stream_urls(): void
     {
         $this->seed(DatabaseSeeder::class);
+
+        $user = User::factory()->create();
+        $issued = app(ApiSessionService::class)->issueSession($user, Request::create('/'));
+        $this->withToken($issued['access_token']);
 
         foreach (['connection', 'wakubwa'] as $zone) {
             $this->getJson('/api/videos?zone='.$zone)

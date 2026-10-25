@@ -52,10 +52,14 @@ class AuthSessionController extends Controller
             $user->name = (string) $identity['name'];
         }
 
-        if ($user->status === 'banned') {
+        if ($user->exists && $user->status !== 'active') {
             return response()->json([
                 'message' => 'This account is blocked.',
             ], 403);
+        }
+
+        if ($user->role === 'admin' && ! ($identity['email_verified'] ?? false)) {
+            return response()->json(['message' => 'Verify your email before signing in as an administrator.'], 403);
         }
 
         $user->last_login = now();

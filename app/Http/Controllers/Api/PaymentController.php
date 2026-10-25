@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Video;
 use App\Services\MobilipaService;
 use App\Services\SonicPesaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class PaymentController extends Controller
 {
@@ -81,7 +84,27 @@ class PaymentController extends Controller
         }
 
         $zone = $validated['zone'] ?? 'connection';
-        $type = $validated['type'] ?? $this->defaultTransactionType($zone);
+        if ($zone === 'wakubwa') {
+            if (filled($validated['item_id'] ?? null)) {
+                throw ValidationException::withMessages(['item_id' => 'Wakubwa access requires a zone subscription.']);
+            }
+            $setting = AppSetting::find('wakubwa_subscription_price');
+            $expectedAmount = (int) ($setting?->value['price'] ?? 3000);
+            $validated['item_id'] = null;
+            $validated['item_title'] = 'Wakubwa Zone Monthly Subscription';
+        } else {
+            $video = Video::where('zone', 'connection')->find($validated['item_id'] ?? null);
+            if (! $video || $video->price <= 0) {
+                throw ValidationException::withMessages(['item_id' => 'Select a paid Connection video.']);
+            }
+            $expectedAmount = $video->price;
+            $validated['item_id'] = (string) $video->id;
+            $validated['item_title'] = $video->title;
+        }
+        if ($validated['amount'] !== $expectedAmount || strtoupper($validated['currency']) !== 'TZS') {
+            throw ValidationException::withMessages(['amount' => 'The payment amount or currency does not match the current price.']);
+        }
+        $type = $this->defaultTransactionType($zone);
 
         $providerResponse = $service->createOrder([
             'buyer_email' => $user->email,
@@ -259,7 +282,7 @@ class PaymentController extends Controller
             ], 422);
         }
 
-        $transaction = Transaction::where('transaction_id', $payload['order_id'])->first();
+        $transaction = Transaction::where('transaction_id', $payload['order_id'])->where('provider', 'sonicpesa')->first();
 
         if (! $transaction) {
             return response()->json([
@@ -267,6 +290,8 @@ class PaymentController extends Controller
                 'message' => 'Transaction not found.',
             ], 404);
         }
+
+        $this->validatePaymentTotals($transaction, $payload['amount'] ?? null, $payload['currency'] ?? null);
 
         $rawPaymentStatus = strtoupper((string) $payload['status']);
         $mappedStatus = $this->mapTransactionStatus($rawPaymentStatus, $payload['event']);
@@ -335,9 +360,10 @@ class PaymentController extends Controller
             ], 422);
         }
 
-        $transaction = Transaction::where('transaction_id', $orderId)
-            ->orWhere('reference', $orderId)
-            ->first();
+        $transaction = Transaction::where('provider', 'mobilipa')
+            ->where(function ($query) use ($orderId): void {
+                $query->where('transaction_id', $orderId)->orWhere('reference', $orderId);
+            })->first();
 
         if (! $transaction) {
             return response()->json([
@@ -376,11 +402,17 @@ class PaymentController extends Controller
             ?? $providerTransaction['payment_status']
             ?? $providerTransaction['status']
             ?? $providerResponse['payment_status']
-            ?? null;
+            ?? (in_array($providerResponse['status'] ?? '', ['PAID', 'COMPLETED', 'PENDING', 'FAILED', 'CANCELLED', 'EXPIRED'], true) ? $providerResponse['status'] : null);
 
         if (! filled($paymentStatus)) {
             return;
         }
+
+        $this->validatePaymentTotals(
+            $transaction,
+            $providerData['amount'] ?? $providerTransaction['amount'] ?? $providerResponse['amount'] ?? null,
+            $providerData['currency'] ?? $providerTransaction['currency'] ?? $providerResponse['currency'] ?? null,
+        );
 
         $rawPaymentStatus = strtoupper((string) $paymentStatus);
         $mappedStatus = $this->mapTransactionStatus($rawPaymentStatus);
@@ -440,7 +472,7 @@ class PaymentController extends Controller
         $normalizedStatus = strtoupper($paymentStatus);
         $normalizedEvent = strtoupper((string) $event);
 
-        if (in_array($normalizedStatus, ['SUCCESS', 'COMPLETED'], true) || $normalizedEvent === 'PAYMENT.COMPLETED') {
+        if (in_array($normalizedStatus, ['SUCCESS', 'COMPLETED', 'PAID'], true) || $normalizedEvent === 'PAYMENT.COMPLETED') {
             return 'COMPLETED';
         }
 
@@ -456,41 +488,36 @@ class PaymentController extends Controller
         return $zone === 'wakubwa' ? 'PURCHASE_WAKUBWA' : 'PURCHASE_CONNECTION';
     }
 
+    private function validatePaymentTotals(Transaction $transaction, mixed $amount, mixed $currency): void
+    {
+        if (($amount !== null && (float) $amount !== (float) $transaction->amount)
+            || ($currency !== null && strtoupper((string) $currency) !== strtoupper((string) $transaction->currency))) {
+            throw ValidationException::withMessages(['amount' => 'Provider payment totals do not match this order.']);
+        }
+    }
+
     private function unlockPurchasedVideo(Transaction $transaction): void
     {
-        $zone = $transaction->zone === 'wakubwa' ? 'wakubwa' : 'connection';
-
-        $user = User::find((int) $transaction->user_id);
-
-        if (! $user && filled($transaction->user_email)) {
-            $user = User::where('email', $transaction->user_email)->first();
-        }
-
-        if (! $user) {
-            return;
-        }
-
-        // Subscription payments (wakubwa zone, no item_id) → activate or extend subscription
-        if ($zone === 'wakubwa' && ! filled($transaction->item_id)) {
-            $user->subscribeToWakubwa(1);
-
-            return;
-        }
-
-        // Per-video unlock
-        if (! filled($transaction->item_id)) {
-            return;
-        }
-
-        $field = $zone === 'wakubwa' ? 'unlocked_wakubwa_videos' : 'unlocked_connection_videos';
-        $current = $user->{$field} ?? [];
-        $normalizedCurrent = array_map('strval', $current);
-        $videoId = (string) $transaction->item_id;
-
-        if (! in_array($videoId, $normalizedCurrent, true)) {
-            $normalizedCurrent[] = $videoId;
-            $user->update([$field => array_values(array_unique($normalizedCurrent))]);
-        }
+        DB::transaction(function () use ($transaction): void {
+            $payment = Transaction::lockForUpdate()->findOrFail($transaction->id);
+            if ($payment->status !== 'COMPLETED' || $payment->access_granted_at !== null) {
+                return;
+            }
+            $user = User::lockForUpdate()->find((int) $payment->user_id);
+            if (! $user || $user->status !== 'active') {
+                return;
+            }
+            if ($payment->zone === 'wakubwa' && ! filled($payment->item_id)) {
+                $user->subscribeToWakubwa(1);
+            } elseif ($payment->zone === 'connection' && filled($payment->item_id)) {
+                $unlocked = array_map('strval', $user->unlocked_connection_videos ?? []);
+                $unlocked[] = (string) $payment->item_id;
+                $user->update(['unlocked_connection_videos' => array_values(array_unique($unlocked))]);
+            } else {
+                return;
+            }
+            $payment->forceFill(['access_granted_at' => now()])->save();
+        });
     }
 
     private function hasUnlockedVideo(Transaction $transaction): bool

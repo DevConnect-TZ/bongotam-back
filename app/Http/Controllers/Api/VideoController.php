@@ -145,7 +145,7 @@ class VideoController extends Controller
         }
 
         // Free videos are always accessible
-        if ($video->price === 0 || $video->price === null) {
+        if (($video->price === 0 || $video->price === null) && $video->zone !== 'wakubwa') {
             $video->increment('views');
 
             return response()->json([

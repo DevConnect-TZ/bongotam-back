@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\AppSetting;
-use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,47 +27,11 @@ class SubscriptionController extends Controller
         ]);
     }
 
-    /**
-     * Subscribe the authenticated user to Wakubwa Zone.
-     *
-     * Records the transaction and subscribes the user for 1 month.
-     */
     public function subscribe(Request $request): JsonResponse
     {
-        $user = $request->user();
-
-        if (! $user) {
-            return response()->json(['message' => 'Unauthenticated.'], 401);
-        }
-
-        $validated = $request->validate([
-            'transaction_id' => 'required|string',
-            'amount' => 'required|integer|min:1',
-        ]);
-
-        $price = $this->getSubscriptionPrice();
-
-        // Record the transaction
-        Transaction::create([
-            'user_id' => $user->id,
-            'user_email' => $user->email,
-            'amount' => $validated['amount'],
-            'currency' => 'TSHS',
-            'type' => 'WAKUBWA_SUBSCRIPTION',
-            'item_id' => null,
-            'item_title' => 'Wakubwa Zone Monthly Subscription',
-            'transaction_id' => $validated['transaction_id'],
-            'status' => 'COMPLETED',
-        ]);
-
-        // Subscribe user for 1 month
-        $user->subscribeToWakubwa(1);
-
         return response()->json([
-            'subscribed' => true,
-            'expires_at' => $user->fresh()->wakubwa_subscription_expires_at,
-            'message' => 'Successfully subscribed to Wakubwa Zone!',
-        ]);
+            'message' => 'Subscriptions are activated only after a verified payment. Please create a payment order.',
+        ], 409);
     }
 
     /**

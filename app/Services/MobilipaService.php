@@ -93,8 +93,7 @@ class MobilipaService
             ?? config('services.mobilipa.api_key');
 
         if (! filled($signature) || ! filled($secret)) {
-            // When no signature is provided or secret is missing, require configured API key
-            return filled(config('services.mobilipa.api_key'));
+            return false;
         }
 
         $expected = hash_hmac('sha256', $payloadRaw, (string) $secret);

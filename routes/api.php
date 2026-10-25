@@ -15,33 +15,34 @@ use Illuminate\Support\Facades\Route;
 Route::get('/uptime', [StatusController::class, 'uptime'])->name('api.uptime');
 
 // Auth
-Route::post('/auth/session', [AuthSessionController::class, 'store']);
-Route::post('/auth/refresh', [AuthSessionController::class, 'refresh']);
-Route::post('/auth/logout', [AuthSessionController::class, 'destroy']);
+Route::post('/auth/session', [AuthSessionController::class, 'store'])->middleware(['trusted.origin', 'throttle:api-auth']);
+Route::post('/auth/refresh', [AuthSessionController::class, 'refresh'])->middleware(['trusted.origin', 'throttle:api-auth']);
+Route::post('/auth/logout', [AuthSessionController::class, 'destroy'])->middleware(['trusted.origin', 'throttle:api-auth']);
 
 // Frontend security
 Route::get('/frontend/security', [FrontendSecurityController::class, 'show']);
 
 // Uploads
 // Videos
-Route::get('/videos', [VideoController::class, 'index']);
-Route::get('/videos/{id}', [VideoController::class, 'show']);
-Route::post('/videos/{id}/views', [VideoController::class, 'incrementViews']);
 Route::post('/payments/sonicpesa/webhook', [PaymentController::class, 'webhook']);
 Route::post('/payments/mobilipa/webhook', [PaymentController::class, 'mobilipaWebhook']);
 
-Route::middleware('api.auth')->group(function (): void {
+Route::middleware(['api.auth', 'throttle:api'])->group(function (): void {
+    Route::get('/videos', [VideoController::class, 'index']);
+    Route::get('/videos/{id}', [VideoController::class, 'show']);
+    Route::post('/videos/{id}/views', [VideoController::class, 'incrementViews'])->middleware('throttle:video-views');
+
     Route::get('/users/lookup', [UserController::class, 'lookup']);
     Route::post('/users', [UserController::class, 'storeOrUpdate']);
 
     Route::get('/transactions', [TransactionController::class, 'index']);
 
     // Payments (SonicPesa & Mobilipa)
-    Route::post('/payments/order', [PaymentController::class, 'createOrder']);
+    Route::post('/payments/order', [PaymentController::class, 'createOrder'])->middleware('throttle:payments');
     Route::get('/payments/orders/{orderId}', [PaymentController::class, 'status']);
-    Route::post('/payments/sonicpesa/order', [PaymentController::class, 'createOrder']);
+    Route::post('/payments/sonicpesa/order', [PaymentController::class, 'createOrder'])->middleware('throttle:payments');
     Route::get('/payments/sonicpesa/orders/{orderId}', [PaymentController::class, 'status']);
-    Route::post('/payments/mobilipa/order', [PaymentController::class, 'createOrder']);
+    Route::post('/payments/mobilipa/order', [PaymentController::class, 'createOrder'])->middleware('throttle:payments');
     Route::get('/payments/mobilipa/orders/{orderId}', [PaymentController::class, 'status']);
     Route::get('/payments/gateway', [PaymentGatewayController::class, 'show']);
 
@@ -53,7 +54,7 @@ Route::middleware('api.auth')->group(function (): void {
     Route::get('/subscription/wakubwa/price', [SubscriptionController::class, 'price']);
 });
 
-Route::middleware(['api.auth', 'api.admin'])->group(function (): void {
+Route::middleware(['api.auth', 'api.admin', 'throttle:api-admin'])->group(function (): void {
     Route::put('/frontend/security', [FrontendSecurityController::class, 'update']);
 
     // Uploads

@@ -6,6 +6,7 @@ use App\Http\Middleware\AuthenticateApiAccessToken;
 use App\Http\Middleware\EnsureApiAdmin;
 use App\Models\AppSetting;
 use App\Models\User;
+use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -58,6 +59,7 @@ class PaymentGatewaySwitchingTest extends TestCase
     public function test_default_gateway_is_sonicpesa_when_no_setting_exists(): void
     {
         $user = User::factory()->create();
+        $video = Video::create(['title' => 'Paid video', 'price' => 5000, 'zone' => 'connection']);
 
         Http::fake([
             'https://api.sonicpesa.com/*' => Http::response([
@@ -76,6 +78,7 @@ class PaymentGatewaySwitchingTest extends TestCase
         ]);
 
         $response = $this->actingAs($user)->postJson('/api/payments/sonicpesa/order', [
+            'item_id' => (string) $video->id,
             'buyer_name' => 'Test',
             'buyer_phone' => '0797455136',
             'amount' => 5000,
@@ -89,6 +92,7 @@ class PaymentGatewaySwitchingTest extends TestCase
     public function test_it_routes_to_mobilipa_when_gateway_is_set_to_mobilipa(): void
     {
         $user = User::factory()->create();
+        $video = Video::create(['title' => 'Paid video', 'price' => 5000, 'zone' => 'connection']);
         AppSetting::updateOrCreate(
             ['key' => 'active_payment_gateway'],
             ['value' => ['provider' => 'mobilipa']]
@@ -106,6 +110,7 @@ class PaymentGatewaySwitchingTest extends TestCase
         ]);
 
         $response = $this->actingAs($user)->postJson('/api/payments/sonicpesa/order', [
+            'item_id' => (string) $video->id,
             'buyer_name' => 'Test',
             'buyer_phone' => '0797455136',
             'amount' => 5000,

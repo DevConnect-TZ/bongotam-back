@@ -6,6 +6,7 @@ use App\Http\Middleware\AuthenticateApiAccessToken;
 use App\Http\Middleware\EnsureApiAdmin;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -42,6 +43,8 @@ class MobilipaPaymentTest extends TestCase
         $user = User::factory()->create([
             'email' => 'buyer@example.com',
         ]);
+
+        Video::query()->forceCreate(['id' => 17, 'title' => 'Premium Connection Video', 'price' => 10000, 'zone' => 'connection']);
 
         Http::fake([
             'https://mobilipa.store/api/v1/request-payment.php*' => Http::response([

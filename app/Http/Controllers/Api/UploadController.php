@@ -15,7 +15,7 @@ class UploadController extends Controller
     {
         return $this->storeUpload($request, [
             'file' => 'required|file|image|max:10240',
-            'folder' => 'nullable|string|max:100',
+            'folder' => ['nullable', 'string', 'max:100', 'regex:~\A[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\z~'],
         ], 'thumbnails');
     }
 
@@ -23,7 +23,7 @@ class UploadController extends Controller
     {
         return $this->storeUpload($request, [
             'file' => 'required|file|mimetypes:video/*|max:512000',
-            'folder' => 'nullable|string|max:100',
+            'folder' => ['nullable', 'string', 'max:100', 'regex:~\A[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\z~'],
         ], 'videos');
     }
 
@@ -45,7 +45,7 @@ class UploadController extends Controller
         try {
             $folder = $request->input('folder', $defaultFolder);
             $file = $request->file('file');
-            $filename = uniqid().'_'.Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)).'.'.$file->getClientOriginalExtension();
+            $filename = Str::uuid().'_'.Str::slug(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME)).'.'.($file->extension() ?: 'bin');
             $path = $file->storeAs($folder, $filename, 'public');
 
             return response()->json([
@@ -56,7 +56,7 @@ class UploadController extends Controller
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'error' => $e->getMessage(),
+                'message' => 'The upload could not be stored. Please try again.',
             ], 500);
         }
     }

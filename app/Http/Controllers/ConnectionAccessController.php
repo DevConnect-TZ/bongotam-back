@@ -300,6 +300,9 @@ class ConnectionAccessController extends Controller
         }
 
         $identity = $firebaseIdentity->lookupByIdToken($idToken);
+        if (! ($identity['email_verified'] ?? false)) {
+            return null;
+        }
 
         return $this->authenticateAdminIdentity($request, $identity);
     }

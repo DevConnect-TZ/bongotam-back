@@ -45,15 +45,11 @@ class ApiSessionService
 
         $session = AuthSession::with('user')->find($sessionId);
 
-        if (! $this->sessionUsable($session, $request, true)) {
-            if ($session) {
-                $this->revokeSession($session);
-            }
-
+        if (! $session || ! hash_equals((string) $session->refresh_token_hash, hash('sha256', $secret))) {
             return null;
         }
 
-        if (! hash_equals((string) $session->refresh_token_hash, hash('sha256', $secret))) {
+        if (! $this->sessionUsable($session, $request, true)) {
             $this->revokeSession($session);
 
             return null;
@@ -115,12 +111,12 @@ class ApiSessionService
         $refreshToken = (string) $request->cookie($this->refreshCookieName(), '');
 
         if ($refreshToken !== '') {
-            [$sessionId] = $this->parseRefreshToken($refreshToken);
+            [$sessionId, $secret] = $this->parseRefreshToken($refreshToken);
 
             if ($sessionId) {
                 $session = AuthSession::find($sessionId);
 
-                if ($session) {
+                if ($session && $secret && hash_equals((string) $session->refresh_token_hash, hash('sha256', $secret))) {
                     $this->revokeSession($session);
 
                     return;

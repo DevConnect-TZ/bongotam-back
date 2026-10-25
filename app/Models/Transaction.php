@@ -31,12 +31,14 @@ class Transaction extends Model
         'msisdn',
         'provider_event',
         'provider_payload',
+        'access_granted_at',
     ];
 
     protected function casts(): array
     {
         return [
             'amount' => 'integer',
+            'access_granted_at' => 'datetime',
             'provider_payload' => 'array',
         ];
     }

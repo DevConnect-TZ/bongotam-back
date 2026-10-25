@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\AuthenticateApiAccessToken;
 use App\Http\Middleware\EnsureApiAdmin;
+use App\Http\Middleware\EnsureTrustedOrigin;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'api.auth' => AuthenticateApiAccessToken::class,
             'api.admin' => EnsureApiAdmin::class,
+            'trusted.origin' => EnsureTrustedOrigin::class,
         ]);
 
         $middleware->validateCsrfTokens(except: [
