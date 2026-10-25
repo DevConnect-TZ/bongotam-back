@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,8 +14,15 @@ use Illuminate\Notifications\Notifiable;
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @use HasFactory\u003cUserFactory\u003e */
+    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    /**
+     * The longest Wakubwa window a single legitimate grant can produce.
+     */
+    public const MAX_SUBSCRIPTION_DAYS = 31;
+
+    public const MAX_SUBSCRIPTION_MONTHS = 1;
 
     /**
      * Get the attributes that should be cast.
@@ -46,10 +54,24 @@ class User extends Authenticatable
     }
 
     /**
+     * Detect a subscription window no legitimate single grant could produce.
+     */
+    public function hasExcessiveWakubwaSubscription(): bool
+    {
+        if (! $this->wakubwa_subscription_expires_at) {
+            return false;
+        }
+
+        return $this->wakubwa_subscription_expires_at->greaterThan(now()->addDays(self::MAX_SUBSCRIPTION_DAYS));
+    }
+
+    /**
      * Subscribe user to Wakubwa Zone for a given number of months.
      */
     public function subscribeToWakubwa(int $months = 1): void
     {
+        $months = max(1, min($months, self::MAX_SUBSCRIPTION_MONTHS));
+
         $now = now();
 
         // If there's an active subscription, extend from its end date.

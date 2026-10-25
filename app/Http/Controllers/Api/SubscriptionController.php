@@ -87,8 +87,12 @@ class SubscriptionController extends Controller
      */
     public function grantSubscription(Request $request, int $id): JsonResponse
     {
+        $validated = $request->validate([
+            'months' => 'nullable|integer|min:1|max:'.User::MAX_SUBSCRIPTION_MONTHS,
+        ]);
+
         $user = User::findOrFail($id);
-        $months = max(1, (int) $request->input('months', 1));
+        $months = (int) ($validated['months'] ?? User::MAX_SUBSCRIPTION_MONTHS);
 
         $user->subscribeToWakubwa($months);
         $user->refresh();

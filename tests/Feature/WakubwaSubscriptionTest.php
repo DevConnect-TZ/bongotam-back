@@ -98,5 +98,19 @@ class WakubwaSubscriptionTest extends TestCase
 
         $this->assertTrue($user->fresh()->isWakubwaSubscribed());
     }
-}
 
+    public function test_admin_cannot_grant_more_than_one_month(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create([
+            'email' => 'greedy@example.com',
+            'wakubwa_subscription_expires_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson("/api/users/{$user->id}/grant-subscription", ['months' => 2])
+            ->assertUnprocessable();
+
+        $this->assertNull($user->fresh()->wakubwa_subscription_expires_at);
+    }
+}

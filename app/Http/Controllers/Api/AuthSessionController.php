@@ -52,6 +52,8 @@ class AuthSessionController extends Controller
             $user->name = (string) $identity['name'];
         }
 
+        $apiSessions->enforceSubscriptionIntegrity($user);
+
         if ($user->exists && $user->status !== 'active') {
             return response()->json([
                 'message' => 'This account is blocked.',

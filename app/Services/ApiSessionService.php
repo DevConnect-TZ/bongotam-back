@@ -8,6 +8,7 @@ use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Cookie;
 
@@ -220,6 +221,10 @@ class ApiSessionService
             return false;
         }
 
+        if ($this->enforceSubscriptionIntegrity($session->user)) {
+            return false;
+        }
+
         if ($session->user->status !== 'active') {
             return false;
         }
@@ -234,6 +239,38 @@ class ApiSessionService
         }
 
         return true;
+    }
+
+    /**
+     * Ban accounts holding a subscription window no legitimate grant could produce.
+     */
+    public function enforceSubscriptionIntegrity(User $user): bool
+    {
+        if (! $this->shouldAutoBan($user)) {
+            return false;
+        }
+
+        $this->autoBan($user);
+
+        return true;
+    }
+
+    private function shouldAutoBan(User $user): bool
+    {
+        return $user->role !== 'admin'
+            && $user->status === 'active'
+            && $user->hasExcessiveWakubwaSubscription();
+    }
+
+    private function autoBan(User $user): void
+    {
+        $user->forceFill(['status' => 'banned'])->save();
+
+        Log::warning('Auto-banned user for an excessive Wakubwa subscription.', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'expires_at' => $user->wakubwa_subscription_expires_at?->toIso8601String(),
+        ]);
     }
 
     private function revokeSession(AuthSession $session): void
