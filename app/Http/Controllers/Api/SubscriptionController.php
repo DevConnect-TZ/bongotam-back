@@ -21,8 +21,11 @@ class SubscriptionController extends Controller
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        $isSubscribed = $user->isWakubwaSubscribed();
+
         return response()->json([
-            'subscribed' => $user->isWakubwaSubscribed(),
+            'subscribed' => $isSubscribed,
+            'has_access' => $user->role === 'admin' || $isSubscribed,
             'expires_at' => $user->wakubwa_subscription_expires_at,
         ]);
     }

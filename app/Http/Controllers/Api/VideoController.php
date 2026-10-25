@@ -5,13 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Video;
+use App\Services\VideoAccessService;
 use App\Support\MediaPath;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class VideoController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, VideoAccessService $videoAccess): JsonResponse
     {
         $query = Video::query();
 
@@ -19,27 +20,20 @@ class VideoController extends Controller
             $query->where('zone', $request->input('zone'));
         }
 
+        $user = $request->user();
         $videos = $query->orderByDesc('created_at')
-            ->get(['id', 'title', 'thumbnail', 'price', 'rating', 'zone', 'views', 'created_at']);
+            ->get(['id', 'title', 'thumbnail', 'price', 'rating', 'zone', 'views', 'created_at'])
+            ->map(fn (Video $video): array => $this->videoPayload($video, $user, $videoAccess));
 
         return response()->json($videos);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, int $id, VideoAccessService $videoAccess): JsonResponse
     {
         $video = Video::findOrFail($id);
 
         // Never expose video_link in the public show response
-        return response()->json([
-            'id' => $video->id,
-            'title' => $video->title,
-            'thumbnail' => $video->thumbnail,
-            'price' => $video->price,
-            'rating' => $video->rating,
-            'zone' => $video->zone,
-            'views' => $video->views,
-            'created_at' => $video->created_at,
-        ]);
+        return response()->json($this->videoPayload($video, $request->user(), $videoAccess));
     }
 
     public function manage(int $id): JsonResponse
@@ -130,9 +124,9 @@ class VideoController extends Controller
 
     /**
      * Access-controlled endpoint to retrieve the video stream URL.
-     * Requires user email and checks if the video is free, unlocked, or user is admin.
+     * Uses the authenticated backend user for every access decision.
      */
-    public function stream(Request $request, int $id): JsonResponse
+    public function stream(Request $request, int $id, VideoAccessService $videoAccess): JsonResponse
     {
         $video = Video::findOrFail($id);
         $user = $request->user();
@@ -144,45 +138,10 @@ class VideoController extends Controller
             ], 401);
         }
 
-        // Free videos are always accessible
-        if (($video->price === 0 || $video->price === null) && $video->zone !== 'wakubwa') {
-            $video->increment('views');
-
-            return response()->json([
-                'access' => true,
-                'url' => $video->video_link,
-            ]);
-        }
-
-        $isAdmin = $user->role === 'admin';
-
-        // Wakubwa Zone: check subscription instead of per-video unlock
-        if ($video->zone === 'wakubwa') {
-            $hasAccess = $isAdmin || $user->isWakubwaSubscribed();
-
-            if (! $hasAccess) {
-                return response()->json([
-                    'access' => false,
-                    'message' => 'Wakubwa Zone subscription required. Subscribe for only Tsh 3000/month.',
-                ], 403);
-            }
-
-            $video->increment('views');
-
-            return response()->json([
-                'access' => true,
-                'url' => $video->video_link,
-            ]);
-        }
-
-        // Connection Zone: per-video unlock check
-        $unlockedConnection = $user->unlocked_connection_videos ?? [];
-        $hasAccess = $isAdmin || in_array((string) $id, $unlockedConnection, true) || in_array($id, $unlockedConnection, true);
-
-        if (! $hasAccess) {
+        if (! $videoAccess->hasAccess($user, $video)) {
             return response()->json([
                 'access' => false,
-                'message' => 'Payment required to access this video.',
+                'message' => $videoAccess->denialMessage($video),
             ], 403);
         }
 
@@ -192,5 +151,23 @@ class VideoController extends Controller
             'access' => true,
             'url' => $video->video_link,
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function videoPayload(Video $video, User $user, VideoAccessService $videoAccess): array
+    {
+        return [
+            'id' => $video->id,
+            'title' => $video->title,
+            'thumbnail' => $video->thumbnail,
+            'price' => $video->price,
+            'rating' => $video->rating,
+            'zone' => $video->zone,
+            'views' => $video->views,
+            'created_at' => $video->created_at,
+            'has_access' => $videoAccess->hasAccess($user, $video),
+        ];
     }
 }

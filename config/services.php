@@ -41,6 +41,9 @@ return [
 
     'firebase' => [
         'web_api_key' => env('FIREBASE_WEB_API_KEY'),
+        'project_id' => env('FIREBASE_PROJECT_ID'),
+        'client_email' => env('FIREBASE_CLIENT_EMAIL'),
+        'private_key' => env('FIREBASE_PRIVATE_KEY'),
     ],
 
     'sonicpesa' => [

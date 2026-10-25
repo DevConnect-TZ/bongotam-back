@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\FirebaseAdminService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Throwable;
 
 class UserController extends Controller
 {
@@ -128,6 +130,37 @@ class UserController extends Controller
         $user->update(['status' => $validated['status']]);
 
         return response()->json($user);
+    }
+
+    public function destroy(Request $request, User $user, FirebaseAdminService $firebaseAdmin): JsonResponse
+    {
+        if ($request->user()?->is($user)) {
+            return response()->json([
+                'message' => 'You cannot permanently delete your own administrator account.',
+            ], 422);
+        }
+
+        if (! $firebaseAdmin->isConfigured()) {
+            return response()->json([
+                'message' => 'Permanent account deletion is not configured on the server.',
+            ], 503);
+        }
+
+        try {
+            $firebaseAdmin->deleteUserByEmail($user->email);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'The authentication account could not be deleted. No local data was removed.',
+            ], 502);
+        }
+
+        $user->delete();
+
+        return response()->json([
+            'message' => 'User account permanently deleted.',
+        ]);
     }
 
     public function unlockVideo(Request $request, int $id): JsonResponse
