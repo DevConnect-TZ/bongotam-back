@@ -84,4 +84,18 @@ class User extends Authenticatable
             'wakubwa_subscription_expires_at' => $start->copy()->addMonths($months),
         ]);
     }
+
+    /**
+     * Revoke Wakubwa Zone subscription access immediately.
+     */
+    public function revokeWakubwaSubscription(): void
+    {
+        if (! $this->isWakubwaSubscribed()) {
+            return;
+        }
+
+        $this->update([
+            'wakubwa_subscription_expires_at' => now(),
+        ]);
+    }
 }

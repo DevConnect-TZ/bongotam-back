@@ -112,6 +112,26 @@ class SubscriptionController extends Controller
         ]);
     }
 
+    /**
+     * Revoke Wakubwa Zone subscription access for a user (Admin only).
+     */
+    public function revokeSubscription(User $user): JsonResponse
+    {
+        $user->revokeWakubwaSubscription();
+        $user->refresh();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "Subscription revoked for {$user->email}.",
+            'user' => [
+                'id' => $user->id,
+                'email' => $user->email,
+                'is_active' => $user->isWakubwaSubscribed(),
+                'expires_at' => optional($user->wakubwa_subscription_expires_at)->toIso8601String(),
+            ],
+        ]);
+    }
+
     private function getSubscriptionPrice(): int
     {
         $setting = AppSetting::where('key', 'wakubwa_subscription_price')->first();

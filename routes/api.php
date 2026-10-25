@@ -81,6 +81,7 @@ Route::middleware(['api.auth', 'api.admin', 'throttle:api-admin'])->group(functi
     Route::put('/subscription/wakubwa/price', [SubscriptionController::class, 'price']);
     Route::get('/subscription/wakubwa/subscribers', [SubscriptionController::class, 'subscribers']);
     Route::post('/users/{id}/grant-subscription', [SubscriptionController::class, 'grantSubscription']);
+    Route::delete('/users/{user}/wakubwa-subscription', [SubscriptionController::class, 'revokeSubscription']);
 
     // Payment gateway switching (admin only)
     Route::put('/payments/gateway', [PaymentGatewayController::class, 'update']);

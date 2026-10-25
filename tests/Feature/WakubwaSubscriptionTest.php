@@ -99,6 +99,47 @@ class WakubwaSubscriptionTest extends TestCase
         $this->assertTrue($user->fresh()->isWakubwaSubscribed());
     }
 
+    public function test_admin_can_revoke_a_users_subscription_immediately(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create([
+            'email' => 'subscriber@example.com',
+            'wakubwa_subscription_expires_at' => now()->addDays(15),
+        ]);
+
+        $response = $this->actingAs($admin)
+            ->deleteJson("/api/users/{$user->id}/wakubwa-subscription")
+            ->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('user.id', $user->id)
+            ->assertJsonPath('user.email', 'subscriber@example.com')
+            ->assertJsonPath('user.is_active', false);
+
+        $this->assertNotNull($response->json('user.expires_at'));
+        $revokedUser = $user->fresh();
+        $this->assertFalse($revokedUser->isWakubwaSubscribed());
+
+        $this->actingAs($revokedUser)->getJson('/api/subscription/wakubwa/status')
+            ->assertOk()
+            ->assertJsonPath('has_access', false);
+    }
+
+    public function test_revoking_an_expired_subscription_is_idempotent(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+        $user = User::factory()->create([
+            'wakubwa_subscription_expires_at' => now()->subDays(5),
+        ]);
+        $originalExpiry = $user->wakubwa_subscription_expires_at->copy();
+
+        $this->actingAs($admin)
+            ->deleteJson("/api/users/{$user->id}/wakubwa-subscription")
+            ->assertOk()
+            ->assertJsonPath('user.is_active', false);
+
+        $this->assertTrue($user->fresh()->wakubwa_subscription_expires_at->equalTo($originalExpiry));
+    }
+
     public function test_admin_cannot_grant_more_than_one_month(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
