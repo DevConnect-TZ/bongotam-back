@@ -14,18 +14,27 @@ use Symfony\Component\HttpFoundation\Cookie;
 
 class ApiSessionService
 {
+    public function __construct(private readonly SessionSecurityService $security) {}
+
     public function issueSession(User $user, Request $request): array
     {
+        $deviceId = $this->normalizeDeviceId($request->input('device_id'));
+
+        $this->security->enforceActiveSessionLimit($user);
+
         $refreshSecret = Str::random(80);
 
         $session = AuthSession::create([
             'user_id' => $user->id,
+            'device_id' => $deviceId,
             'refresh_token_hash' => hash('sha256', $refreshSecret),
             'refresh_expires_at' => now()->addMinutes($this->refreshTokenTtlMinutes()),
             'last_used_at' => now(),
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
         ]);
+
+        $this->security->recordLogin($session);
 
         return $this->sessionPayload($session->load('user'), $refreshSecret, $request);
     }
@@ -306,5 +315,16 @@ class ApiSessionService
     private function cookieShouldBeSecure(Request $request): bool
     {
         return $request->isSecure() || str_starts_with((string) config('app.url'), 'https://');
+    }
+
+    private function normalizeDeviceId(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return $value === '' ? null : substr($value, 0, 64);
     }
 }

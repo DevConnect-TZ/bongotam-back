@@ -69,6 +69,7 @@ Route::middleware(['api.auth', 'api.admin', 'throttle:api-admin'])->group(functi
 
     // Users
     Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users/security', [UserController::class, 'security']);
     Route::delete('/users/{user}', [UserController::class, 'destroy']);
     Route::put('/users/{id}/role', [UserController::class, 'updateRole']);
     Route::put('/users/{id}/status', [UserController::class, 'updateStatus']);

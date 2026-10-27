@@ -15,6 +15,7 @@ class AuthSession extends Model
     protected $fillable = [
         'id',
         'user_id',
+        'device_id',
         'refresh_token_hash',
         'refresh_expires_at',
         'last_used_at',

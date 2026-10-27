@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuthSession;
+use App\Models\LoginEvent;
 use App\Models\User;
 use App\Services\FirebaseAdminService;
+use App\Services\SessionSecurityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
@@ -29,6 +32,57 @@ class UserController extends Controller
             });
 
         return response()->json($users);
+    }
+
+    public function security(SessionSecurityService $security): JsonResponse
+    {
+        $activeSessionUserIds = AuthSession::query()
+            ->whereNull('revoked_at')
+            ->where('refresh_expires_at', '>', now())
+            ->distinct()
+            ->pluck('user_id');
+
+        $recentLoginUserIds = LoginEvent::query()
+            ->where('created_at', '>=', now()->subDays(7))
+            ->distinct()
+            ->pluck('user_id');
+
+        $userIds = $activeSessionUserIds
+            ->merge($recentLoginUserIds)
+            ->unique()
+            ->values();
+
+        $users = User::query()
+            ->whereIn('id', $userIds)
+            ->orderByDesc('last_login')
+            ->get(['id', 'name', 'email', 'role', 'status', 'last_login']);
+
+        return response()->json(
+            $users->map(function (User $user) use ($security): array {
+                $overview = $security->overview($user);
+
+                return [
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $user->role,
+                        'status' => $user->status,
+                        'last_login' => $user->last_login?->toIso8601String(),
+                    ],
+                    'active_session_count' => $overview['active_session_count'],
+                    'active_sessions' => $overview['active_sessions'],
+                    'last_24h' => [
+                        'logins' => $overview['logins_24h'],
+                        'distinct_devices' => $overview['distinct_devices_24h'],
+                        'distinct_ips' => $overview['distinct_ips_24h'],
+                    ],
+                    'suspicious' => $overview['suspicious'],
+                    'reasons' => $overview['reasons'],
+                    'recent_login_events' => $security->recentLoginEvents($user),
+                ];
+            })->values()
+        );
     }
 
     public function lookup(Request $request): JsonResponse

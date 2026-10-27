@@ -20,6 +20,7 @@ class AuthSessionController extends Controller
     ): JsonResponse {
         $validated = $request->validate([
             'id_token' => 'required|string',
+            'device_id' => 'nullable|string|max:64',
         ]);
 
         if (! $firebaseIdentity->isConfigured()) {
