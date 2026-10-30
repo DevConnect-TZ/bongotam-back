@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\FrontendSecurityController;
 use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\UploadController;
 use App\Http\Controllers\Api\UserController;
@@ -35,6 +36,9 @@ Route::middleware(['api.auth', 'throttle:api'])->group(function (): void {
     Route::get('/users/lookup', [UserController::class, 'lookup']);
     Route::post('/users', [UserController::class, 'storeOrUpdate']);
 
+    Route::get('/support/tickets', [SupportTicketController::class, 'index']);
+    Route::post('/support/tickets', [SupportTicketController::class, 'store'])->middleware('throttle:support');
+
     Route::get('/transactions', [TransactionController::class, 'index']);
 
     // Payments (SonicPesa & Mobilipa)
@@ -55,6 +59,9 @@ Route::middleware(['api.auth', 'throttle:api'])->group(function (): void {
 });
 
 Route::middleware(['api.auth', 'api.admin', 'throttle:api-admin'])->group(function (): void {
+    Route::get('/admin/support/tickets', [SupportTicketController::class, 'adminIndex']);
+    Route::patch('/admin/support/tickets/{ticket}', [SupportTicketController::class, 'update']);
+
     Route::put('/frontend/security', [FrontendSecurityController::class, 'update']);
 
     // Uploads

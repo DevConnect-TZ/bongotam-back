@@ -31,7 +31,7 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
-        foreach (['api' => 240, 'api-admin' => 120, 'api-auth' => 30, 'payments' => 6, 'video-views' => 30, 'web-auth' => 30, 'web-login' => 10] as $name => $attempts) {
+        foreach (['api' => 240, 'api-admin' => 120, 'api-auth' => 30, 'payments' => 6, 'support' => 5, 'video-views' => 30, 'web-auth' => 30, 'web-login' => 10] as $name => $attempts) {
             RateLimiter::for($name, static fn (Request $request) => Limit::perMinute($attempts)->by($request->user()?->id ?? $request->ip()));
         }
     }
